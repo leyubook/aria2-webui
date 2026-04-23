@@ -1,0 +1,14 @@
+{
+  "aria2_rpc_url": "http://127.0.0.1:6800/jsonrpc",
+  "aria2_rpc_secret": "",
+  "rclone_binary": "rclone",
+  "rclone_remote": "webdav:",
+  "rclone_remote_path": "downloads",
+  "download_dir": "downloads",
+  "webdav_scan_depth": 5,
+  "webdav_scan_ttl_seconds": 90,
+  "aria2_poll_interval_seconds": 3,
+  "api_host": "127.0.0.1",
+  "api_port": 8080,
+  "hook_token": "change-me-hook-token"
+}
