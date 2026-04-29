@@ -16,7 +16,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, Header
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -39,6 +41,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "api_host": "127.0.0.1",
     "api_port": 8080,
     "hook_token": "change-me-hook-token",
+    "api_token": "",
 }
 ARIA2_KEYS = [
     "gid",
@@ -53,10 +56,28 @@ ARIA2_KEYS = [
     "errorMessage",
 ]
 TASK_LIMIT = 200
+SENSITIVE_KEYS = {"aria2_rpc_secret", "hook_token", "api_token"}
+SNAPSHOT_THROTTLE_SECONDS = 1.0
 
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+
+
+def mask_settings(settings: dict[str, Any]) -> dict[str, Any]:
+    masked = dict(settings)
+    for key in SENSITIVE_KEYS:
+        if key in masked and masked[key]:
+            masked[key] = "***"
+    return masked
+
+
+async def verify_api_token(x_api_token: str = Header(default="")) -> None:
+    expected = str(runtime.settings.get("api_token", "")).strip()
+    if not expected:
+        return
+    if x_api_token != expected:
+        raise HTTPException(status_code=401, detail="API token 无效")
 
 
 def resolve_local_path(value: str | Path) -> Path:
@@ -125,7 +146,12 @@ def load_settings() -> dict[str, Any]:
 
 
 def save_settings(settings: dict[str, Any]) -> dict[str, Any]:
+    current = load_settings()
     merged = {**DEFAULT_SETTINGS, **settings}
+    # Don't let masked values overwrite real secrets
+    for key in SENSITIVE_KEYS:
+        if merged.get(key) == "***":
+            merged[key] = current.get(key, DEFAULT_SETTINGS.get(key, ""))
     ensure_runtime_paths(merged)
     SETTINGS_FILE.write_text(
         json.dumps(merged, ensure_ascii=False, indent=2),
@@ -355,6 +381,7 @@ class SettingsRequest(BaseModel):
     api_host: str = "127.0.0.1"
     api_port: int = Field(default=8080, ge=1, le=65535)
     hook_token: str = "change-me-hook-token"
+    api_token: str = ""
 
 
 @dataclass
@@ -445,6 +472,9 @@ class AppRuntime:
         self.websockets: set[WebSocket] = set()
         self.upload_jobs: dict[str, asyncio.Task[Any]] = {}
         self.lock = asyncio.Lock()
+        self._last_snapshot_ts: float = 0.0
+        self._snapshot_pending: bool = False
+        self._poll_failures: int = 0
 
     async def log(self, level: str, source: str, message: str) -> None:
         line = f"[{utc_now()}][{level.upper()}][{source}] {message}"
@@ -474,7 +504,7 @@ class AppRuntime:
                 "completed": sum(task["ui_status"] == "uploaded" for task in tasks),
             }
             return {
-                "settings": dict(self.settings),
+                "settings": mask_settings(self.settings),
                 "tasks": tasks,
                 "logs": list(self.logs),
                 "remote_files": list(self.remote_files),
@@ -503,7 +533,19 @@ class AppRuntime:
                     self.websockets.discard(socket)
 
     async def broadcast_snapshot(self) -> None:
+        now = time.time()
+        if now - self._last_snapshot_ts < SNAPSHOT_THROTTLE_SECONDS:
+            self._snapshot_pending = True
+            return
+        self._last_snapshot_ts = now
+        self._snapshot_pending = False
         await self.broadcast({"type": "snapshot", "data": await self.snapshot()})
+
+    async def flush_pending_snapshot(self) -> None:
+        if self._snapshot_pending:
+            self._last_snapshot_ts = time.time()
+            self._snapshot_pending = False
+            await self.broadcast({"type": "snapshot", "data": await self.snapshot()})
 
     async def register_socket(self, socket: WebSocket) -> None:
         await socket.accept()
@@ -584,7 +626,7 @@ class AppRuntime:
 
 
 runtime = AppRuntime()
-app = FastAPI(title="Aria2 Plus", version="1.0.0")
+app = FastAPI(title="Aria2 Plus", version="1.0.0", lifespan=lifespan)
 app.mount("/assets", StaticFiles(directory=str(PUBLIC_DIR)), name="assets")
 
 
@@ -775,9 +817,17 @@ async def sync_aria2_once() -> None:
 
 
 async def poll_aria2_forever() -> None:
+    base_interval = int(runtime.settings.get("aria2_poll_interval_seconds", 3))
     while True:
         await sync_aria2_once()
-        await asyncio.sleep(int(runtime.settings.get("aria2_poll_interval_seconds", 3)))
+        await runtime.flush_pending_snapshot()
+        if runtime.aria2_online:
+            runtime._poll_failures = 0
+            delay = base_interval
+        else:
+            runtime._poll_failures += 1
+            delay = min(base_interval * (2 ** runtime._poll_failures), 60)
+        await asyncio.sleep(delay)
 
 
 async def delete_local_source(source: Path) -> None:
@@ -867,18 +917,16 @@ async def run_upload_pipeline(gid: str) -> None:
         runtime.upload_jobs.pop(gid, None)
 
 
-@app.on_event("startup")
-async def on_startup() -> None:
+@asynccontextmanager
+async def lifespan(application: FastAPI):
     await refresh_local_cache()
-    app.state.poller = asyncio.create_task(poll_aria2_forever())
+    poller = asyncio.create_task(poll_aria2_forever())
     await runtime.log("info", "system", "Aria2 Plus API Server 已启动。")
-
-
-@app.on_event("shutdown")
-async def on_shutdown() -> None:
-    poller: asyncio.Task[Any] | None = getattr(app.state, "poller", None)
-    if poller:
-        poller.cancel()
+    yield
+    poller.cancel()
+    for job in list(runtime.upload_jobs.values()):
+        job.cancel()
+    runtime.upload_jobs.clear()
 
 
 @app.get("/")
@@ -893,20 +941,20 @@ async def get_dashboard() -> dict[str, Any]:
 
 @app.get("/api/settings")
 async def get_settings() -> dict[str, Any]:
-    return dict(runtime.settings)
+    return mask_settings(runtime.settings)
 
 
 @app.put("/api/settings")
-async def put_settings(payload: SettingsRequest) -> dict[str, Any]:
+async def put_settings(payload: SettingsRequest, _: None = Depends(verify_api_token)) -> dict[str, Any]:
     runtime.settings = save_settings(payload.model_dump())
     await refresh_local_cache()
     await runtime.log("info", "settings", "系统设置已保存。")
     await runtime.broadcast_snapshot()
-    return {"ok": True, "settings": dict(runtime.settings)}
+    return {"ok": True, "settings": mask_settings(runtime.settings)}
 
 
 @app.post("/api/webdav/scan")
-async def post_webdav_scan() -> dict[str, Any]:
+async def post_webdav_scan(_: None = Depends(verify_api_token)) -> dict[str, Any]:
     files, raw_output = await ensure_webdav_scan(force=True)
     return {
         "ok": True,
@@ -918,20 +966,20 @@ async def post_webdav_scan() -> dict[str, Any]:
 
 
 @app.post("/api/webdav/verify-md5")
-async def post_webdav_verify_md5(payload: VerifyMd5Request) -> dict[str, Any]:
+async def post_webdav_verify_md5(payload: VerifyMd5Request, _: None = Depends(verify_api_token)) -> dict[str, Any]:
     result = await verify_remote_md5(payload.remote_path, payload.local_file_name)
     return {"ok": True, **result}
 
 
 @app.post("/api/local/refresh")
-async def post_local_refresh() -> dict[str, Any]:
+async def post_local_refresh(_: None = Depends(verify_api_token)) -> dict[str, Any]:
     files = await refresh_local_cache()
     await runtime.log("info", "local", f"本地下载目录已刷新，共 {len(files)} 个文件。")
     return {"ok": True, "files": files}
 
 
 @app.post("/api/tasks/add")
-async def post_add_task(payload: AddTaskRequest) -> dict[str, Any]:
+async def post_add_task(payload: AddTaskRequest, _: None = Depends(verify_api_token)) -> dict[str, Any]:
     uri = payload.uri.strip()
     if not uri:
         raise HTTPException(status_code=400, detail="任务链接不能为空")
@@ -986,7 +1034,7 @@ async def post_add_task(payload: AddTaskRequest) -> dict[str, Any]:
 
 
 @app.post("/api/tasks/{gid}/retry-upload")
-async def post_retry_upload(gid: str) -> dict[str, Any]:
+async def post_retry_upload(gid: str, _: None = Depends(verify_api_token)) -> dict[str, Any]:
     task = await runtime.get_task(gid)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")

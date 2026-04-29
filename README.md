@@ -6,11 +6,11 @@
 
 1. 前端粘贴磁力链接 / 种子链接
 2. 后端先扫描 WebDAV 远端文件，按文件名做去重
-3. 若远端已存在，直接拦截并提示“网盘已存在，停止添加任务”
+3. 若远端已存在，直接拦截并提示"网盘已存在，停止添加任务"
 4. 若远端不存在，再调用 Aria2 RPC 添加下载任务
 5. Aria2 下载完成后，通过 `--on-download-complete` 回调后端
 6. 后端调用 `rclone move` 将下载产物搬运到 WebDAV
-7. 上传失败时，前端提供红色“手动重试上传”按钮
+7. 上传失败时，前端提供红色"手动重试上传"按钮
 
 这个仓库的当前实现由 Python/FastAPI 提供 API 和静态页面服务，前端为原生 HTML/CSS/JS，无 Node.js 构建依赖。
 
@@ -52,30 +52,30 @@
 - `POST /api/aria2/hook`
   - 接收 Aria2 完成回调并触发 `rclone move`
 - `GET /api/dashboard`
-  - 返回前端仪表盘快照
+  - 返回前端仪表盘快照（敏感字段已遮蔽）
 - `GET /api/settings`
-  - 读取当前设置
+  - 读取当前设置（敏感字段已遮蔽）
 - `PUT /api/settings`
-  - 保存设置到 `data/settings.json`
+  - 保存设置到 `data/settings.json`（自动跳过遮蔽值）
 - `WebSocket /ws/events`
   - 向前端推送状态和日志
 
 ### 1.3 去重与校验逻辑
 
-- 自动去重：当前是“按文件名匹配”
+- 自动去重：当前是"按文件名匹配"
 - 深层校验：由前端按钮触发 `rclone md5sum`
 - 对于无法从磁力链接中提取文件名的场景：
-  - 必须填写“文件名提示”
-  - 或者点击“忽略去重强制下发”
+  - 必须填写"文件名提示"
+  - 或者点击"忽略去重强制下发"
 
 ---
 
 ## 2. 目录结构
 
 ```text
-aria2-webui/
+aria2-plus/
 ├─ data/
-│  └─ settings.json          # 持久化配置
+│  └─ settings.json          # 持久化配置（已加入 .gitignore）
 ├─ public/
 │  ├─ index.html             # 前端页面
 │  ├─ app.css                # 页面样式
@@ -91,6 +91,7 @@ aria2-webui/
 │  └─ run.py                 # 按 settings.json 启动 Uvicorn
 ├─ requirements.txt
 ├─ .gitignore
+├─ install.md                # 详细部署教程
 └─ README.md
 ```
 
@@ -118,7 +119,7 @@ aria2-webui/
 
 ### 3.2 状态存储说明
 
-- `data/settings.json`：持久化配置
+- `data/settings.json`：持久化配置（已加入 `.gitignore`，不会被 git 追踪）
 - 任务面板中的运行态任务：当前保存在后端内存中
 - 注意：
   - 重启 API Server 后，仪表盘的内存态任务历史会丢失
@@ -133,18 +134,56 @@ aria2-webui/
 
 ---
 
-## 4. 运行环境要求
+## 4. 安全特性
 
-### 4.1 必需依赖
+### 4.1 API Token 认证
+
+新增 `api_token` 配置项。当 `api_token` 不为空时，所有写操作端点需要携带 `X-Api-Token` 请求头：
+
+- `PUT /api/settings`
+- `POST /api/webdav/scan`
+- `POST /api/webdav/verify-md5`
+- `POST /api/local/refresh`
+- `POST /api/tasks/add`
+- `POST /api/tasks/{gid}/retry-upload`
+
+只读端点（`GET /api/dashboard`、`GET /api/settings`、`GET /`、`WebSocket /ws/events`）和 Aria2 回调端点（`POST /api/aria2/hook`，已有独立 `hook_token` 校验）不需要 `api_token`。
+
+留空则不启用认证。
+
+### 4.2 敏感字段遮蔽
+
+所有 API 响应中，以下字段自动替换为 `***`：
+
+- `aria2_rpc_secret`
+- `hook_token`
+- `api_token`
+
+前端设置页中，这些字段以 `password` 输入框呈现，显示为 `***` 时 placeholder 提示"已设置，留空保持不变"。提交时如果值仍为 `***`，后端自动保留原有值，不会误覆盖。
+
+### 4.3 Hook 脚本安全
+
+- Windows：使用 PowerShell `ConvertTo-Json` 安全构建 JSON，避免命令注入
+- Linux：优先使用 `jq` 构建 JSON；回退时对 GID 做转义处理
+
+### 4.4 配置文件保护
+
+`data/settings.json` 已加入 `.gitignore`，避免密钥随仓库泄露。
+
+---
+
+## 5. 运行环境要求
+
+### 5.1 必需依赖
 
 - Python 3.10+
 - `pip`
 - `aria2c`
 - `rclone`
-- Windows 下建议系统自带 `curl`
-- Linux 下需要 `bash` + `curl`
+- Windows 下建议系统自带 `curl` 或 PowerShell 5+
+- Linux 下需要 `bash` + `curl`（推荐安装 `jq`）
 
-### 4.2 Python 依赖
+### 5.2 Python 依赖
 
 安装命令：
 
@@ -157,7 +196,7 @@ pip install -r requirements.txt
 - `fastapi`
 - `uvicorn[standard]`
 
-### 4.3 不需要的东西
+### 5.3 不需要的东西
 
 本项目当前不需要：
 
@@ -168,7 +207,7 @@ pip install -r requirements.txt
 
 ---
 
-## 5. 配置文件说明
+## 6. 配置文件说明
 
 配置文件路径：
 
@@ -191,11 +230,12 @@ data/settings.json
   "aria2_poll_interval_seconds": 3,
   "api_host": "127.0.0.1",
   "api_port": 8080,
-  "hook_token": "change-me-hook-token"
+  "hook_token": "change-me-hook-token",
+  "api_token": ""
 }
 ```
 
-### 5.1 字段解释
+### 6.1 字段解释
 
 | 字段 | 作用 | 示例 | 备注 |
 | --- | --- | --- | --- |
@@ -207,14 +247,15 @@ data/settings.json
 | `download_dir` | 本地下载目录 | `downloads` | 必须与 Aria2 下载目录一致 |
 | `webdav_scan_depth` | `rclone ls` 扫描深度 | `5` | 用于远端文件探测 |
 | `webdav_scan_ttl_seconds` | 远端扫描缓存秒数 | `90` | 避免频繁重复扫描 |
-| `aria2_poll_interval_seconds` | Aria2 轮询间隔 | `3` | 越小越实时，越大越省资源 |
+| `aria2_poll_interval_seconds` | Aria2 轮询间隔（秒） | `3` | 越小越实时，越大越省资源 |
 | `api_host` | API Server 监听地址 | `127.0.0.1` | `server/run.py` 会读取它 |
 | `api_port` | API Server 监听端口 | `8080` | 修改后需要重启服务 |
 | `hook_token` | Aria2 回调保护 Token | `change-me-hook-token` | 回调脚本必须同步 |
+| `api_token` | API 写操作认证 Token | `my-api-token` | 留空则不启用认证 |
 
 ---
 
-## 6. Rclone / WebDAV 配置要求
+## 7. Rclone / WebDAV 配置要求
 
 本项目不会帮你自动创建 Rclone remote。
 
@@ -251,11 +292,11 @@ webdav:downloads
 
 ---
 
-## 7. 部署前必须确认的耦合点
+## 8. 部署前必须确认的耦合点
 
-这部分非常重要。下次无论是你本人部署，还是丢给 OpenCode / Claude Code 部署，都必须优先检查这几个耦合点。
+这部分非常重要。无论是你本人部署，还是丢给代码代理部署，都必须优先检查这几个耦合点。
 
-### 7.1 下载目录耦合
+### 8.1 下载目录耦合
 
 后端依赖 `download_dir` 来：
 
@@ -271,18 +312,7 @@ webdav:downloads
 
 必须是同一个目录。
 
-错误示例：
-
-- `settings.json` 写的是 `downloads`
-- 但 Aria2 实际下载到了 `D:\downloads2`
-
-这样会导致：
-
-- 页面看不到本地文件
-- 上传搬运找不到源文件
-- MD5 校验找不到对应文件
-
-### 7.2 回调 Token 耦合
+### 8.2 回调 Token 耦合
 
 这三个地方必须一致：
 
@@ -290,14 +320,14 @@ webdav:downloads
 - `ARIA2_PLUS_HOOK_TOKEN` 环境变量
 - `scripts/aria2-hook.bat` / `scripts/aria2-hook.sh` 运行时实际传入的 Token
 
-### 7.3 RPC Secret 耦合
+### 8.3 RPC Secret 耦合
 
 这两个地方必须一致：
 
 - Aria2 启动参数里的 `--rpc-secret=...`
 - `data/settings.json` 里的 `aria2_rpc_secret`
 
-### 7.4 远端名称耦合
+### 8.4 远端名称耦合
 
 `settings.json` 里的：
 
@@ -309,467 +339,92 @@ webdav:downloads
 
 ---
 
-## 8. Windows 部署说明
+## 9. 性能与稳定性优化
 
-### 8.1 安装依赖
+### 9.1 Snapshot 广播节流
 
-确保命令可用：
+后端对 WebSocket 推送做了节流：1 秒内最多广播一次完整快照。轮询周期结束时补发一次 pending 的快照。
 
-```bat
-python --version
-aria2c --version
-rclone version
-curl --version
-```
+### 9.2 Aria2 轮询指数退避
 
-如果 `python` 命令不可用，也可以尝试：
+当 Aria2 离线时，轮询间隔按 `base × 2^n` 指数退避，最大 60 秒。恢复在线后立即重置为正常间隔。
 
-```bat
-py -3 --version
-```
+### 9.3 优雅关闭
 
-### 8.2 安装 Python 依赖
+服务停止时，会取消 Aria2 轮询任务和所有进行中的上传任务。
 
-在项目根目录执行：
+### 9.4 前端智能轮询
 
-```bat
-pip install -r requirements.txt
-```
-
-### 8.3 修改配置
-
-编辑：
-
-```text
-data\settings.json
-```
-
-至少确认以下字段正确：
-
-- `aria2_rpc_url`
-- `aria2_rpc_secret`
-- `rclone_binary`
-- `rclone_remote`
-- `rclone_remote_path`
-- `download_dir`
-- `hook_token`
-
-### 8.4 启动 API Server
-
-```bat
-scripts\start-server.bat
-```
-
-该脚本会：
-
-- 进入项目根目录
-- 自动创建 `downloads\`
-- 优先尝试 `python`
-- 若失败再尝试 `py -3`
-- 通过 `python -m server.run` 按 `settings.json` 启动服务
-
-### 8.5 启动 Aria2
-
-最关键的是保证 `--dir` 与 `download_dir` 一致。
-
-示例：
-
-```bat
-set ARIA2_PLUS_HOOK_URL=http://127.0.0.1:8080/api/aria2/hook
-set ARIA2_PLUS_HOOK_TOKEN=change-me-hook-token
-
-aria2c ^
-  --enable-rpc=true ^
-  --rpc-listen-all=true ^
-  --rpc-allow-origin-all=true ^
-  --rpc-listen-port=6800 ^
-  --max-concurrent-downloads=1 ^
-  --dir=%cd%\downloads ^
-  --on-download-complete=%cd%\scripts\aria2-hook.bat
-```
-
-如果启用了 RPC Secret：
-
-```bat
-set ARIA2_PLUS_HOOK_URL=http://127.0.0.1:8080/api/aria2/hook
-set ARIA2_PLUS_HOOK_TOKEN=your-hook-token
-
-aria2c ^
-  --enable-rpc=true ^
-  --rpc-listen-all=true ^
-  --rpc-allow-origin-all=true ^
-  --rpc-listen-port=6800 ^
-  --rpc-secret=your-rpc-secret ^
-  --max-concurrent-downloads=1 ^
-  --dir=%cd%\downloads ^
-  --on-download-complete=%cd%\scripts\aria2-hook.bat
-```
-
-### 8.6 打开页面
-
-浏览器访问：
-
-```text
-http://127.0.0.1:8080
-```
-
-如果你修改了 `api_host` / `api_port`，按实际值访问。
+WebSocket 连接成功后自动停止 8 秒定时轮询；断开后自动恢复轮询，确保数据不丢失。
 
 ---
 
-## 9. Linux 部署说明
+## 10. 开发模式
 
-### 9.1 安装依赖
-
-以 Debian/Ubuntu 为例：
+启动 API Server 时，通过环境变量控制 Uvicorn 热重载：
 
 ```bash
-sudo apt update
-sudo apt install -y python3 python3-pip aria2 rclone curl
-```
+# 开发模式（自动热重载）
+ARIA2_PLUS_RELOAD=1 python -m server.run
 
-### 9.2 安装 Python 依赖
-
-```bash
-pip3 install -r requirements.txt
-```
-
-如果你使用虚拟环境：
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-### 9.3 修改配置
-
-编辑：
-
-```bash
-data/settings.json
-```
-
-### 9.4 给脚本执行权限
-
-```bash
-chmod +x scripts/start-server.sh scripts/aria2-hook.sh
-```
-
-### 9.5 启动 API Server
-
-```bash
-./scripts/start-server.sh
-```
-
-### 9.6 启动 Aria2
-
-同样要保证 `--dir` 与 `download_dir` 一致。
-
-示例：
-
-```bash
-export ARIA2_PLUS_HOOK_URL="http://127.0.0.1:8080/api/aria2/hook"
-export ARIA2_PLUS_HOOK_TOKEN="change-me-hook-token"
-
-aria2c \
-  --enable-rpc=true \
-  --rpc-listen-all=true \
-  --rpc-allow-origin-all=true \
-  --rpc-listen-port=6800 \
-  --max-concurrent-downloads=1 \
-  --dir="$(pwd)/downloads" \
-  --on-download-complete="$(pwd)/scripts/aria2-hook.sh"
-```
-
-启用 RPC Secret 的示例：
-
-```bash
-export ARIA2_PLUS_HOOK_URL="http://127.0.0.1:8080/api/aria2/hook"
-export ARIA2_PLUS_HOOK_TOKEN="your-hook-token"
-
-aria2c \
-  --enable-rpc=true \
-  --rpc-listen-all=true \
-  --rpc-allow-origin-all=true \
-  --rpc-listen-port=6800 \
-  --rpc-secret="your-rpc-secret" \
-  --max-concurrent-downloads=1 \
-  --dir="$(pwd)/downloads" \
-  --on-download-complete="$(pwd)/scripts/aria2-hook.sh"
+# 生产模式（默认，不热重载）
+python -m server.run
 ```
 
 ---
 
-## 10. 推荐的启动顺序
+## 11. API 一览
 
-无论 Windows 还是 Linux，建议按这个顺序启动：
-
-1. 确认 `rclone ls <remote>` 正常
-2. 确认 `data/settings.json` 已正确配置
-3. 启动 API Server
-4. 启动 Aria2 RPC
-5. 浏览器打开首页
-6. 在“系统设置”页面再次检查配置是否正确
-7. 点击“扫描 WebDAV”测试远端扫描
-8. 添加一个测试下载任务
-
----
-
-## 11. 部署后验收清单
-
-### 11.1 基础连通性检查
-
-打开浏览器：
-
-```text
-http://127.0.0.1:8080
-```
-
-检查是否能看到三栏布局页面。
-
-### 11.2 API 检查
-
-```bash
-curl http://127.0.0.1:8080/api/dashboard
-```
-
-预期：
-
-- 返回 JSON
-- 不报 404
-
-### 11.3 WebDAV 扫描检查
-
-```bash
-curl -X POST http://127.0.0.1:8080/api/webdav/scan
-```
-
-预期：
-
-- 返回 JSON
-- `files` 是数组
-- 如果 Rclone 远端正常，应能列出远端文件
-
-### 11.4 Aria2 RPC 检查
-
-查看页面顶部健康状态：
-
-- Aria2 RPC 应显示在线
-
-或者直接看：
-
-```bash
-curl http://127.0.0.1:8080/api/dashboard
-```
-
-返回的 `health.aria2_online` 应为 `true`。
-
-### 11.5 下载与搬运链路检查
-
-完整测试至少要过这 5 步：
-
-1. 添加一个不存在于 WebDAV 的测试任务
-2. 页面出现“排队中”或“下载中”
-3. 下载完成后状态切到“正在搬运至 WebDAV”
-4. 日志控制台出现 Rclone 输出
-5. 搬运完成后，远端扫描结果中能看到新文件
-
-### 11.6 去重检查
-
-至少验证一次：
-
-1. 先让远端存在一个已知文件名
-2. 再在前端添加同名任务
-3. 页面应直接弹窗提示“网盘已存在，停止添加任务”
-4. Aria2 不应新增该任务
-
----
-
-## 12. 给 OpenCode / Claude Code 的部署指令
-
-如果你下次把这个仓库直接丢给 OpenCode、Claude Code 或其他代码代理，请要求它严格按下面顺序执行。
-
-### 12.1 代理必须先阅读的文件
-
-1. `README.md`
-2. `data/settings.json`
-3. `scripts/start-server.bat`
-4. `scripts/start-server.sh`
-5. `scripts/aria2-hook.bat`
-6. `scripts/aria2-hook.sh`
-7. `server/main.py`
-
-### 12.2 代理的标准部署任务
-
-让代理按下面流程执行：
-
-1. 检查系统是否安装 Python 3.10+、`aria2c`、`rclone`、`curl`
-2. 安装 `requirements.txt`
-3. 验证 `rclone ls <remote>` 是否可用
-4. 编辑 `data/settings.json`，写入正确的：
-   - `aria2_rpc_url`
-   - `aria2_rpc_secret`
-   - `rclone_remote`
-   - `rclone_remote_path`
-   - `download_dir`
-   - `hook_token`
-5. 启动 `python -m server.run`
-6. 用与 `download_dir` 一致的 `--dir` 启动 Aria2
-7. 为 Aria2 配置 `--on-download-complete` 指向对应平台的 hook 脚本
-8. 访问首页
-9. 调用 `POST /api/webdav/scan` 做冒烟测试
-10. 添加测试任务验证整条链路
-
-### 12.3 代理部署时绝不能漏的检查
-
-- `download_dir` 是否和 Aria2 的 `--dir` 完全一致
-- `hook_token` 是否一致
-- `aria2_rpc_secret` 是否一致
-- `rclone_remote` 是否真的存在
-- API Server 的实际端口是否与你访问页面时使用的端口一致
-
-### 12.4 可以直接给代理的任务提示词
-
-你可以把下面这段话直接丢给 OpenCode / Claude Code：
-
-```text
-请先完整阅读 README.md，并按 README 的部署顺序执行本项目。
-重点检查：
-1. data/settings.json 的 download_dir 必须与 aria2c --dir 一致
-2. hook_token 必须与 Aria2 回调脚本环境变量一致
-3. aria2_rpc_secret 必须与 Aria2 RPC 配置一致
-4. rclone_remote 必须是本机真实存在且可访问的 remote
-5. 启动 API Server 后，先调用 POST /api/webdav/scan 验证 Rclone
-6. 再启动 aria2c，并验证下载完成后会触发 /api/aria2/hook
-完成后请执行一次完整链路验收，并把实际启动命令、修改过的配置、验收结果返回。
-```
-
----
-
-## 13. 当前前端功能说明
-
-### 13.1 智能监控
-
-- 看板视图展示：
-  - 排队中
-  - 下载中
-  - 上传搬运中
-  - 异常待处理
-  - 完成归档
-
-### 13.2 任务面板
-
-- 卡片展示每个任务：
-  - 文件名
-  - 队列位置
-  - 下载进度
-  - 下载速度
-  - 搬运状态
-  - 错误信息
-
-### 13.3 网盘文件浏览
-
-- 显示远端文件列表
-- 每个远端文件可以点击“校验本地 MD5”
-
-### 13.4 系统设置
-
-- 允许在页面直接修改 `settings.json` 中的大部分关键配置
-
-### 13.5 操作日志控制台
-
-- WebSocket 实时接收后端日志
-- 可看到 Rclone 搬运进度输出
-
----
-
-## 14. 当前后端业务流程
-
-### 14.1 添加任务流程
-
-1. 前端调用 `POST /api/tasks/add`
-2. 后端尝试提取文件名
-3. 如果不能提取文件名且不是强制下发，则直接报错
-4. 如果能提取文件名，则先执行或复用远端扫描缓存
-5. 若远端存在同名文件，则返回重复任务提示
-6. 若远端不存在，则调用：
-   - `aria2.addUri`
-   - 或 `aria2.addTorrent`
-7. 任务进入面板
-
-### 14.2 下载完成后的搬运流程
-
-1. Aria2 下载完成
-2. `--on-download-complete` 调用 `scripts/aria2-hook.bat` 或 `scripts/aria2-hook.sh`
-3. Hook 脚本向 `POST /api/aria2/hook` 发送 `gid + token`
-4. 后端通过 RPC 读取任务详情
-5. 后端定位本地下载文件
-6. 调用 `rclone move` 搬运到 WebDAV
-7. 搬运成功后删除本地源文件
-8. 刷新本地文件列表和远端扫描缓存
-
-### 14.3 手动重试流程
-
-1. 某个任务上传失败
-2. 前端显示红色“手动重试上传”
-3. 点击后调用 `POST /api/tasks/{gid}/retry-upload`
-4. 后端重新执行搬运流程
-
----
-
-## 15. API 一览
-
-### 15.1 仪表盘
+### 11.1 仪表盘
 
 ```http
-GET /api/dashboard
+GET /api/dashboard                # 只读，无需 token
 ```
 
-### 15.2 设置
+### 11.2 设置
 
 ```http
-GET /api/settings
-PUT /api/settings
+GET /api/settings                 # 只读，无需 token（敏感字段已遮蔽）
+PUT /api/settings                 # 需要 X-Api-Token（如果启用了 api_token）
 ```
 
-### 15.3 WebDAV
+### 11.3 WebDAV
 
 ```http
-POST /api/webdav/scan
-POST /api/webdav/verify-md5
+POST /api/webdav/scan             # 需要 X-Api-Token
+POST /api/webdav/verify-md5       # 需要 X-Api-Token
 ```
 
-### 15.4 本地目录
+### 11.4 本地目录
 
 ```http
-POST /api/local/refresh
+POST /api/local/refresh           # 需要 X-Api-Token
 ```
 
-### 15.5 任务
+### 11.5 任务
 
 ```http
-POST /api/tasks/add
-POST /api/tasks/{gid}/retry-upload
+POST /api/tasks/add               # 需要 X-Api-Token
+POST /api/tasks/{gid}/retry-upload # 需要 X-Api-Token
 ```
 
-### 15.6 Aria2 回调
+### 11.6 Aria2 回调
 
 ```http
-POST /api/aria2/hook
+POST /api/aria2/hook              # 用 hook_token 独立校验，不需要 X-Api-Token
 ```
 
-### 15.7 WebSocket
+### 11.7 WebSocket
 
 ```http
-GET /ws/events
+GET /ws/events                     # 只读，无需 token
 ```
 
 ---
 
-## 16. 常见问题排查
+## 12. 常见问题排查
 
-### 16.1 页面能打开，但 Aria2 显示离线
+### 12.1 页面能打开，但 Aria2 显示离线
 
 检查：
 
@@ -778,7 +433,7 @@ GET /ws/events
 - `aria2_rpc_secret` 是否匹配
 - 6800 端口是否被防火墙拦截
 
-### 16.2 页面能扫描本地，但扫描 WebDAV 失败
+### 12.2 页面能扫描本地，但扫描 WebDAV 失败
 
 检查：
 
@@ -787,7 +442,7 @@ GET /ws/events
 - `rclone_remote_path` 是否正确
 - `rclone ls webdav:` 是否能手工跑通
 
-### 16.3 任务下载完成了，但没有自动搬运
+### 12.3 任务下载完成了，但没有自动搬运
 
 优先检查：
 
@@ -797,7 +452,7 @@ GET /ws/events
 - API Server 是否正在运行
 - 日志控制台里是否出现 `/api/aria2/hook` 相关日志
 
-### 16.4 自动搬运失败，点击重试仍失败
+### 12.4 自动搬运失败，点击重试仍失败
 
 检查：
 
@@ -806,39 +461,42 @@ GET /ws/events
 - Rclone 对远端目录是否有写权限
 - Rclone 是否能执行 `move`
 
-你可以手动验证：
-
-```bash
-rclone move <本地文件或目录> <remote:path>
-```
-
-### 16.5 去重没有拦住重复任务
+### 12.5 去重没有拦住重复任务
 
 检查：
 
 - 远端扫描是否成功
 - 远端文件名是否真的与待下载文件名一致
 - 磁力链接是否能提取到 `dn`
-- 若不能提取，是否已填写“文件名提示”
+- 若不能提取，是否已填写"文件名提示"
+
+### 12.6 API 返回 401
+
+如果你配置了 `api_token`，所有写操作需要携带 HTTP 请求头：
+
+```
+X-Api-Token: your-token-here
+```
+
+前端设置页保存 `api_token` 后会自动在后续请求中携带。
 
 ---
 
-## 17. 已知限制
+## 13. 已知限制
 
-当前版本是“可部署模板 + 可运行原型”，不是经过大规模生产验证的成熟版本。
+当前版本是"可部署模板 + 可运行原型"，不是经过大规模生产验证的成熟版本。
 
 当前已知限制：
 
 - 任务历史主要保存在内存中，重启服务后不会长期保留
 - 自动去重目前是按文件名，不是哈希级自动比对
 - MD5 深层校验目前是手动触发，不是自动前置逻辑
-- 没有做用户认证和权限系统
 - 没有做 Docker 化部署
 - 没有内置 systemd / NSSM / Supervisor 配置文件
 
 ---
 
-## 18. 后续建议
+## 14. 后续建议
 
 如果你准备把这个项目继续做成长期可维护版本，下一步建议优先做：
 
@@ -846,58 +504,6 @@ rclone move <本地文件或目录> <remote:path>
 2. 把 Aria2 配置、Rclone 配置和项目配置彻底打通
 3. 增加 Docker Compose 部署方式
 4. 增加 Linux systemd 服务文件
-5. 增加登录鉴权
-6. 增加更强的远端去重策略
+5. 增加更强的远端去重策略
 
----
-
-## 19. 最短部署路径
-
-如果你只想最快跑起来，按下面步骤即可：
-
-```bash
-pip install -r requirements.txt
-```
-
-编辑：
-
-```text
-data/settings.json
-```
-
-确保：
-
-- `rclone_remote` 正确
-- `download_dir` 与 Aria2 的 `--dir` 一致
-- `hook_token` 正确
-
-启动 API：
-
-```bash
-python -m server.run
-```
-
-启动 Aria2：
-
-```bash
-export ARIA2_PLUS_HOOK_URL="http://127.0.0.1:8080/api/aria2/hook"
-export ARIA2_PLUS_HOOK_TOKEN="change-me-hook-token"
-
-aria2c \
-  --enable-rpc=true \
-  --rpc-listen-all=true \
-  --rpc-allow-origin-all=true \
-  --rpc-listen-port=6800 \
-  --max-concurrent-downloads=1 \
-  --dir="$(pwd)/downloads" \
-  --on-download-complete="$(pwd)/scripts/aria2-hook.sh"
-```
-
-打开：
-
-```text
-http://127.0.0.1:8080
-```
-
-先点“扫描 WebDAV”，再添加测试任务。
-
+详细的部署教程请参阅 **[install.md](install.md)**。

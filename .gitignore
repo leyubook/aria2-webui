@@ -10,6 +10,7 @@ env/
 downloads/
 data/runtime/
 data/*.log
+data/settings.json
 
 .DS_Store
 Thumbs.db

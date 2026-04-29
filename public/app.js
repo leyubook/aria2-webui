@@ -3,6 +3,9 @@ const state = {
   currentView: "smart",
   currentExplorer: "remote",
   logs: [],
+  wsConnected: false,
+  pollTimer: null,
+  apiToken: "",
 };
 
 const elements = {
@@ -37,8 +40,12 @@ function showMessage(title, message, detail = "") {
 }
 
 async function api(url, options = {}) {
+  const headers = { "Content-Type": "application/json" };
+  if (state.apiToken) {
+    headers["X-Api-Token"] = state.apiToken;
+  }
   const response = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
+    headers,
     ...options,
   });
   const data = await response.json().catch(() => ({}));
@@ -363,6 +370,11 @@ function populateSettings(settings) {
     if (!input) {
       return;
     }
+    if (input.type === "password" && value === "***") {
+      input.placeholder = "已设置，留空保持不变";
+      input.value = "";
+      return;
+    }
     input.value = value;
   });
 }
@@ -457,8 +469,10 @@ function connectSocket() {
   elements.socketState.className = "status-pill idle";
 
   socket.addEventListener("open", () => {
+    state.wsConnected = true;
     elements.socketState.textContent = "WS 已连接";
     elements.socketState.className = "status-pill online";
+    stopPolling();
   });
 
   socket.addEventListener("message", (event) => {
@@ -471,8 +485,10 @@ function connectSocket() {
   });
 
   socket.addEventListener("close", () => {
+    state.wsConnected = false;
     elements.socketState.textContent = "WS 已断开";
     elements.socketState.className = "status-pill offline";
+    startPolling();
     window.setTimeout(connectSocket, 3000);
   });
 }
@@ -548,6 +564,10 @@ function bindEvents() {
     payload.webdav_scan_ttl_seconds = Number(payload.webdav_scan_ttl_seconds);
     payload.aria2_poll_interval_seconds = Number(payload.aria2_poll_interval_seconds);
     payload.api_port = Number(payload.api_port);
+    const tokenInput = elements.settingsForm.elements.namedItem("api_token");
+    if (tokenInput && tokenInput.value && tokenInput.value !== "***") {
+      state.apiToken = tokenInput.value;
+    }
     try {
       await api("/api/settings", {
         method: "PUT",
@@ -565,6 +585,22 @@ function bindEvents() {
   });
 }
 
+function startPolling() {
+  if (state.pollTimer) return;
+  state.pollTimer = window.setInterval(() => {
+    loadDashboard().catch((error) => {
+      console.error(error);
+    });
+  }, 8000);
+}
+
+function stopPolling() {
+  if (state.pollTimer) {
+    window.clearInterval(state.pollTimer);
+    state.pollTimer = null;
+  }
+}
+
 async function boot() {
   bindEvents();
   toggleView("smart");
@@ -575,11 +611,9 @@ async function boot() {
   } catch (error) {
     showMessage("初始化失败", error.message);
   }
-  window.setInterval(() => {
-    loadDashboard().catch((error) => {
-      console.error(error);
-    });
-  }, 8000);
+  if (!state.wsConnected) {
+    startPolling();
+  }
 }
 
 boot();

@@ -144,7 +144,7 @@
               </label>
               <label>
                 <span>Aria2 RPC Secret</span>
-                <input name="aria2_rpc_secret" type="text" />
+                <input name="aria2_rpc_secret" type="password" />
               </label>
               <label>
                 <span>Rclone 可执行文件</span>
@@ -184,7 +184,11 @@
               </label>
               <label>
                 <span>Hook Token</span>
-                <input name="hook_token" type="text" />
+                <input name="hook_token" type="password" />
+              </label>
+              <label>
+                <span>API Token（可选，留空则不启用认证）</span>
+                <input name="api_token" type="password" />
               </label>
               <div class="form-actions">
                 <button type="submit" class="primary-button">保存设置</button>

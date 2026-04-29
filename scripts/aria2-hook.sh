@@ -9,6 +9,16 @@ if [[ -z "$GID" ]]; then
   exit 1
 fi
 
+# Use jq if available for safe JSON construction; fall back to printf
+if command -v jq >/dev/null 2>&1; then
+  PAYLOAD=$(jq -nc --arg gid "$GID" --arg token "$HOOK_TOKEN" '{gid: $gid, token: $token}')
+else
+  # Escape any special JSON characters in GID
+  SAFE_GID=${GID//\\/\\\\}
+  SAFE_GID=${SAFE_GID//\"/\\\"}
+  PAYLOAD="{\"gid\":\"${SAFE_GID}\",\"token\":\"${HOOK_TOKEN}\"}"
+fi
+
 curl -s -X POST "$API_URL" \
   -H "Content-Type: application/json" \
-  -d "{\"gid\":\"$GID\",\"token\":\"$HOOK_TOKEN\"}" >/dev/null
+  -d "$PAYLOAD" >/dev/null
