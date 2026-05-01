@@ -4,30 +4,60 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Aria2 Plus 全栈可视化管理中心</title>
-    <link rel="stylesheet" href="/assets/app.css" />
+    <link rel="stylesheet" href="/assets/app.css?v=3" />
   </head>
   <body>
-    <div class="backdrop"></div>
-    <div class="shell">
-      <header class="topbar">
-        <div class="brand">
+    <!-- 登录/设置账户页面 -->
+    <div id="authPage" class="auth-page">
+      <div class="auth-container">
+        <div class="auth-header">
           <span class="brand-mark">A2+</span>
-          <div>
-            <h1>Aria2 Plus</h1>
-            <p>Web UI + 本地 API Server 一体化管理中心</p>
+          <h1>Aria2 Plus</h1>
+          <p id="authTitle">登录管理后台</p>
+        </div>
+        <form id="authForm" class="auth-form">
+          <label>
+            <span>用户名</span>
+            <input id="authUsername" name="username" type="text" required />
+          </label>
+          <label>
+            <span>密码</span>
+            <input id="authPassword" name="password" type="password" required />
+          </label>
+          <button type="submit" class="primary-button" id="authSubmit">登录</button>
+        </form>
+        <p id="authError" class="auth-error"></p>
+      </div>
+    </div>
+
+    <!-- 主页面 -->
+    <div id="mainApp" class="main-app" style="display: none;">
+      <div class="backdrop"></div>
+      <div class="shell">
+        <header class="topbar">
+          <div class="brand">
+            <span class="brand-mark">A2+</span>
+            <div>
+              <h1>Aria2 Plus</h1>
+              <p>Web UI + 本地 API Server 一体化管理中心</p>
+            </div>
           </div>
-        </div>
-        <nav class="nav-tabs">
-          <button class="nav-tab active" data-view="smart">智能监控</button>
-          <button class="nav-tab" data-view="tasks">任务面板</button>
-          <button class="nav-tab" data-view="files">网盘文件浏览</button>
-          <button class="nav-tab" data-view="settings">系统设置</button>
-        </nav>
-        <div class="topbar-actions">
-          <span id="socketState" class="status-pill idle">WS 连接中</span>
-          <button id="themeToggle" class="ghost-button">切换主题</button>
-        </div>
-      </header>
+          <nav class="nav-tabs">
+            <button class="nav-tab active" data-view="smart">智能监控</button>
+            <button class="nav-tab" data-view="tasks">任务面板</button>
+            <button class="nav-tab" data-view="files">网盘文件浏览</button>
+            <button class="nav-tab" data-view="subscriptions">追番管理</button>
+            <button class="nav-tab" data-view="settings">系统设置</button>
+          </nav>
+          <div class="topbar-actions">
+            <span id="socketState" class="status-pill idle">WS 连接中</span>
+            <button id="exportButton" class="ghost-button">导出配置</button>
+            <button id="importButton" class="ghost-button">导入配置</button>
+            <input id="importFile" type="file" accept=".zip" style="display:none" />
+            <button id="logoutButton" class="ghost-button">登出</button>
+            <button id="themeToggle" class="ghost-button">切换主题</button>
+          </div>
+        </header>
 
       <main class="workspace">
         <aside class="column column-left">
@@ -130,6 +160,20 @@
             <div id="remoteTable" class="data-table"></div>
           </section>
 
+          <section id="view-subscriptions" class="panel view-panel">
+            <div class="panel-header">
+              <div>
+                <span class="eyebrow">自动追番</span>
+                <h2>订阅管理</h2>
+              </div>
+              <div class="inline-actions">
+                <button type="button" id="addSubscriptionBtn" class="primary-button">+ 新增订阅</button>
+                <button type="button" id="rssCheckAllBtn" class="ghost-button">立即检查全部</button>
+              </div>
+            </div>
+            <div id="subscriptionGrid" class="subscription-grid"></div>
+          </section>
+
           <section id="view-settings" class="panel view-panel">
             <div class="panel-header">
               <div>
@@ -190,12 +234,77 @@
                 <span>API Token（可选，留空则不启用认证）</span>
                 <input name="api_token" type="password" />
               </label>
+              <label>
+                <span>RSS 轮询间隔（分钟）</span>
+                <input name="rss_poll_interval_minutes" type="number" min="1" max="1440" />
+              </label>
               <div class="form-actions">
                 <button type="submit" class="primary-button">保存设置</button>
               </div>
             </form>
+
+            <div class="panel-header" style="margin-top:2rem">
+              <div>
+                <span class="eyebrow">集成服务</span>
+                <h2>TMDB / Bangumi / Mikan</h2>
+              </div>
+            </div>
+            <form id="integrationForm" class="settings-grid">
+              <label><span>Mikan 域名</span><input name="mikan_domain" placeholder="mikanani.me" /></label>
+              <label><span>TMDB API Key</span><input name="tmdb_api_key" type="password" /></label>
+              <label><span>TMDB API URL</span><input name="tmdb_api_url" placeholder="https://api.themoviedb.org/3" /></label>
+              <label><span>Bangumi Access Token</span><input name="bangumi_access_token" type="password" /></label>
+              <div class="form-actions">
+                <button type="submit" class="primary-button">保存集成设置</button>
+              </div>
+            </form>
+
+            <div class="panel-header" style="margin-top:2rem">
+              <div>
+                <span class="eyebrow">推送通知</span>
+                <h2>通知设置</h2>
+              </div>
+            </div>
+            <form id="notifyForm" class="settings-grid">
+              <label><span>Telegram Bot Token</span><input name="notify_telegram_bot_token" type="password" /></label>
+              <label><span>Telegram Chat ID</span><input name="notify_telegram_chat_id" /></label>
+              <label><span>SMTP 服务器</span><input name="notify_email_smtp_host" /></label>
+              <label><span>SMTP 端口</span><input name="notify_email_smtp_port" type="number" value="465" /></label>
+              <label><span>SMTP 用户名</span><input name="notify_email_smtp_user" /></label>
+              <label><span>SMTP 密码</span><input name="notify_email_smtp_password" type="password" /></label>
+              <label><span>发件人邮箱</span><input name="notify_email_from" /></label>
+              <label><span>收件人邮箱</span><input name="notify_email_to" /></label>
+              <label><span>Server酱 Key</span><input name="notify_serverchan_key" /></label>
+              <div class="inline-actions">
+                <button type="submit" class="primary-button">保存通知设置</button>
+                <button type="button" id="testNotifyBtn" class="ghost-button">发送测试通知</button>
+              </div>
+            </form>
+
+            <div class="panel-header" style="margin-top:2rem">
+              <div>
+                <span class="eyebrow">账户安全</span>
+                <h2>修改密码</h2>
+              </div>
+            </div>
+            <form id="changePasswordForm" class="settings-grid">
+              <label>
+                <span>旧密码</span>
+                <input name="old_password" type="password" required />
+              </label>
+              <label>
+                <span>新密码（至少 6 位）</span>
+                <input name="new_password" type="password" minlength="6" required />
+              </label>
+              <label>
+                <span>确认新密码</span>
+                <input name="confirm_password" type="password" minlength="6" required />
+              </label>
+              <div class="form-actions">
+                <button type="submit" class="primary-button">修改密码</button>
+              </div>
+            </form>
           </section>
-        </section>
 
         <aside class="column column-right">
           <section class="panel">
@@ -228,6 +337,68 @@
       </form>
     </dialog>
 
-    <script src="/assets/app.js" defer></script>
+    <!-- 追番订阅新增/编辑对话框 -->
+    <dialog id="subscriptionDialog" class="sub-dialog">
+      <form id="subscriptionForm" class="sub-form">
+        <h3 id="subDialogTitle">新增订阅</h3>
+        <input type="hidden" name="sub_id" id="subId" />
+
+        <label>
+          <span>Mikan 页面 URL（自动解析）</span>
+          <div class="input-with-button">
+            <input name="mikan_url" id="subMikanUrl" type="url" placeholder="https://mikanani.me/Home/Bangumi/..." />
+            <button type="button" id="parseMikanBtn" class="ghost-button">解析</button>
+          </div>
+        </label>
+        <label><span>订阅名称</span><input name="name" id="subName" required placeholder="如：葬送的芙莉莲" /></label>
+        <label><span>RSS URL</span><input name="rss_url" id="subRssUrl" type="url" placeholder="自动填充或手动输入" /></label>
+        <label><span>备用 RSS URL（洗版）</span><input name="standby_rss_url" id="subStandbyRssUrl" type="url" placeholder="可选：用于质量替换" /></label>
+
+        <div class="sub-form-row">
+          <label><span>TMDB ID</span><div class="input-with-button"><input name="tmdb_id" id="subTmdbId" placeholder="可选" /><button type="button" id="fetchTmdbBtn" class="ghost-button">获取封面</button></div></label>
+          <label><span>Bangumi URL</span><div class="input-with-button"><input name="bangumi_url" id="subBangumiUrl" type="url" placeholder="https://bgm.tv/subject/..." /><button type="button" id="fetchBangumiBtn" class="ghost-button">获取信息</button></div></label>
+        </div>
+
+        <label><span>标题匹配正则（留空匹配全部）</span><input name="match_pattern" id="subMatchPattern" placeholder="如：芙莉莲|Frieren" /></label>
+        <label><span>排除正则</span><input name="exclude_pattern" id="subExcludePattern" placeholder="如：预告|PV" /></label>
+
+        <div class="sub-form-row">
+          <label>
+            <span>集数提取正则</span>
+            <select id="subEpisodePreset"><option value="">-- 选择预设 --</option></select>
+            <input name="episode_regex" id="subEpisodeRegex" placeholder="自定义正则" />
+          </label>
+          <label><span>捕获组索引</span><input name="episode_group_index" id="subEpisodeGroupIndex" type="number" value="1" min="0" /></label>
+          <label><span>集数偏移</span><input name="episode_offset" id="subEpisodeOffset" type="number" value="0" /></label>
+        </div>
+
+        <div class="sub-form-row">
+          <label><span>季度</span><input name="season" id="subSeason" type="number" value="1" min="1" /></label>
+          <label><span>总集数（0=未知）</span><input name="total_episodes" id="subTotalEpisodes" type="number" value="0" min="0" /></label>
+        </div>
+
+        <label><span>下载目录模板</span><input name="download_dir_template" id="subDownloadDirTemplate" placeholder="/media/${title}/Season ${season}" /></label>
+        <label><span>停滞检测天数（0=禁用）</span><input name="slacking_days" id="subSlackingDays" type="number" value="0" min="0" /></label>
+
+        <div class="checkbox-group">
+          <label class="checkbox-label"><input type="checkbox" name="auto_disable_when_complete" id="subAutoDisable" checked /> 完结自动暂停</label>
+          <label class="checkbox-label"><input type="checkbox" name="skip_half_episodes" id="subSkipHalf" /> 跳过半集</label>
+          <label class="checkbox-label"><input type="checkbox" name="download_only_latest" id="subOnlyLatest" /> 仅下载最新</label>
+          <label class="checkbox-label"><input type="checkbox" name="omission_detection" id="subOmissionDetect" /> 缺集检测</label>
+          <label class="checkbox-label"><input type="checkbox" name="notify_on_download" id="subNotifyDownload" checked /> 下载通知</label>
+          <label class="checkbox-label"><input type="checkbox" name="notify_on_complete" id="subNotifyComplete" checked /> 完结通知</label>
+          <label class="checkbox-label"><input type="checkbox" name="notify_on_missing" id="subNotifyMissing" /> 缺集通知</label>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="primary-button">保存</button>
+          <button type="button" class="ghost-button" onclick="document.getElementById('subscriptionDialog').close()">取消</button>
+        </div>
+      </form>
+    </dialog>
+
+    </div> <!-- end mainApp -->
+
+    <script src="/assets/app.js?v=6" defer></script>
   </body>
 </html>

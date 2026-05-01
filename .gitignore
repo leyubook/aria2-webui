@@ -12,5 +12,10 @@ data/runtime/
 data/*.log
 data/settings.json
 
+.claude/
+.mcp.json
+export.zip
+data/auth.json
+
 .DS_Store
 Thumbs.db

@@ -615,3 +615,434 @@ label span,
     grid-template-columns: 1fr;
   }
 }
+
+/* 登录页面样式 */
+.auth-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(45, 108, 223, 0.35), transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(126, 176, 255, 0.3), transparent 45%),
+    radial-gradient(ellipse at 60% 80%, rgba(93, 130, 171, 0.25), transparent 50%),
+    linear-gradient(160deg, var(--bg), color-mix(in srgb, var(--bg) 85%, #cad8ea));
+}
+
+.auth-page::before,
+.auth-page::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.6;
+  animation: float-blob 8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.auth-page::before {
+  width: 400px;
+  height: 400px;
+  top: -10%;
+  left: -5%;
+  background: radial-gradient(circle, rgba(45, 108, 223, 0.45), transparent 70%);
+  animation-delay: 0s;
+}
+
+.auth-page::after {
+  width: 350px;
+  height: 350px;
+  bottom: -8%;
+  right: -5%;
+  background: radial-gradient(circle, rgba(126, 176, 255, 0.4), transparent 70%);
+  animation-delay: -4s;
+}
+
+@keyframes float-blob {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -20px) scale(1.05); }
+  66% { transform: translate(-20px, 15px) scale(0.95); }
+}
+
+.auth-container {
+  position: relative;
+  z-index: 1;
+  backdrop-filter: blur(32px) saturate(1.4);
+  -webkit-backdrop-filter: blur(32px) saturate(1.4);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.12),
+    rgba(255, 255, 255, 0.05)
+  );
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow:
+    0 8px 32px rgba(45, 108, 223, 0.12),
+    0 24px 60px rgba(25, 56, 89, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  border-radius: 28px;
+  padding: 48px 40px;
+  width: 100%;
+  max-width: 420px;
+  animation: auth-appear 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes auth-appear {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.auth-header {
+  text-align: center;
+  margin-bottom: 36px;
+}
+
+.auth-header .brand-mark {
+  width: 72px;
+  height: 72px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 22px;
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: white;
+  background: linear-gradient(135deg, #2d6cdf, #7eb0ff);
+  box-shadow: 0 8px 24px rgba(45, 108, 223, 0.35);
+  margin-bottom: 20px;
+  animation: brand-pulse 3s ease-in-out infinite;
+}
+
+@keyframes brand-pulse {
+  0%, 100% { box-shadow: 0 8px 24px rgba(45, 108, 223, 0.35); }
+  50% { box-shadow: 0 8px 32px rgba(45, 108, 223, 0.55); }
+}
+
+.auth-header h1 {
+  margin: 0 0 8px;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.auth-header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.auth-form {
+  display: grid;
+  gap: 18px;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 8px;
+}
+
+.auth-form label span {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.auth-form input {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  outline: none;
+  font-size: 0.95rem;
+  transition: border-color 200ms ease, box-shadow 200ms ease, background 200ms ease;
+}
+
+.auth-form input::placeholder {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.auth-form input:focus {
+  border-color: var(--accent);
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 0 3px rgba(45, 108, 223, 0.15);
+}
+
+.auth-form .primary-button {
+  margin-top: 8px;
+  padding: 15px 20px;
+  font-size: 1rem;
+  border-radius: 16px;
+  letter-spacing: 0.02em;
+  box-shadow: 0 4px 16px rgba(45, 108, 223, 0.3);
+}
+
+.auth-form .primary-button:hover {
+  box-shadow: 0 6px 24px rgba(45, 108, 223, 0.45);
+  transform: translateY(-2px);
+}
+
+.auth-form .primary-button:active {
+  transform: translateY(0);
+}
+
+.auth-error {
+  color: var(--danger);
+  text-align: center;
+  margin: 0;
+  min-height: 20px;
+  font-size: 0.88rem;
+}
+
+body[data-theme="dark"] .auth-container,
+body:not([data-theme="light"]) .auth-container {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.06),
+    rgba(255, 255, 255, 0.02)
+  );
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.2),
+    0 24px 60px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+body[data-theme="dark"] .auth-form input,
+body:not([data-theme="light"]) .auth-form input {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+body[data-theme="dark"] .auth-form input:focus,
+body:not([data-theme="light"]) .auth-form input:focus {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+/* 主应用页面 */
+.main-app {
+  position: relative;
+  min-height: 100vh;
+}
+
+/* ── 复选框 ──────────────────────────────────────────── */
+
+.checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  padding: 0.5rem 0;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent, #2d6cdf);
+}
+
+/* ── 追番订阅卡片 ──────────────────────────────────────── */
+.subscription-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 1.25rem;
+}
+
+.subscription-card {
+  display: flex;
+  gap: 1rem;
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 1rem;
+  transition: box-shadow 0.2s;
+}
+
+.subscription-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.subscription-card.sub-disabled {
+  opacity: 0.55;
+}
+
+.sub-poster {
+  width: 100px;
+  min-height: 140px;
+  border-radius: 12px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--bg-accent);
+}
+
+.sub-poster-placeholder {
+  display: grid;
+  place-items: center;
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.sub-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sub-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sub-head strong {
+  font-size: 1rem;
+  word-break: break-all;
+}
+
+.sub-desc {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.sub-meta {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.sub-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 0.5rem;
+}
+
+.sub-actions .ghost-button,
+.sub-actions .danger-button {
+  padding: 5px 10px;
+  font-size: 0.75rem;
+  border-radius: 8px;
+}
+
+/* 订阅对话框 */
+.sub-dialog {
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 24px;
+  background: var(--panel-strong);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  max-width: 640px;
+  width: 90vw;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.sub-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+}
+
+.sub-form {
+  display: grid;
+  gap: 12px;
+}
+
+.sub-form h3 {
+  margin: 0 0 8px;
+  font-size: 1.15rem;
+}
+
+.sub-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.sub-form label span {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.sub-form input,
+.sub-form select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--panel-strong);
+  color: var(--text);
+  outline: none;
+  font-size: 0.9rem;
+}
+
+.sub-form input:focus,
+.sub-form select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(45, 108, 223, 0.15);
+}
+
+.sub-form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.input-with-button {
+  display: flex;
+  gap: 8px;
+}
+
+.input-with-button input {
+  flex: 1;
+}
+
+@media (max-width: 820px) {
+  .subscription-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .subscription-card {
+    flex-direction: column;
+  }
+
+  .sub-poster {
+    width: 100%;
+    min-height: 120px;
+    max-height: 180px;
+  }
+
+  .sub-dialog {
+    max-width: 95vw;
+    padding: 16px;
+  }
+
+  .sub-form-row {
+    grid-template-columns: 1fr;
+  }
+}
